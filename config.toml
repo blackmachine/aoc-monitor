@@ -1,0 +1,9 @@
+# Путь к логам сервера
+log_path = "/home/alex/aoce/aoc/logs/latest.log"
+
+# Настройки RCON
+rcon_address = "127.0.0.1:25575"
+rcon_password = "GiveMeBackMy1994"
+
+# Лимит чанков для срабатывания рестарта
+chunk_limit = 30000

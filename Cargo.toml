@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 linemux = "0.3.0"
-rcon = "0.6.0"
+rcon = {version = "0.6.0", features = ["rt-tokio"]}
 regex = "1.12.3"
 serde = {version = "1.0.228", features = ["derive"]}
 tokio = {version = "1.50.0", features = ["full"] }
+toml = "1.0.6"
