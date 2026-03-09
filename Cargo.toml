@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = "0.4.44"
 linemux = "0.3.0"
 rcon = {version = "0.6.0", features = ["rt-tokio"]}
 regex = "1.12.3"

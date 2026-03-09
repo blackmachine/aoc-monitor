@@ -1,5 +1,5 @@
 # Путь к логам сервера
-log_path = "/home/alex/aoce/aoc/logs/latest.log"
+log_path = "/home/alex/minecraft/aoc/logs/latest.log"
 
 # Настройки RCON
 rcon_address = "127.0.0.1:25575"
