@@ -6,18 +6,24 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant}; // Добавили Instant для замера времени
 use tokio::sync::RwLock;
-use tokio::time::{sleep, timeout};
+use tokio::time::{sleep, timeout, Instant};
 use rcon::Connection;
 use chrono::Local;
 use axum::{routing::get, Router, Json, extract::State};
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
 struct Config {
     log_path: String,
     server_address: String,
     rcon_address: String,
     rcon_password: String,
     chunk_limit: u32,
+    #[serde(default = "default_api_port")]
+    api_port: u16,
+}
+
+fn default_api_port() -> u16 {
+    9999
 }
 
 #[derive(Serialize, Clone)]
@@ -46,6 +52,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: Config = toml::from_str(&config_str)
         .expect("Ошибка парсинга config.toml");
 
+<<<<<<< HEAD
+=======
+    // Парсим адрес SLP до запуска задачи, чтобы ошибка была видна сразу
+    let slp_addr: SocketAddr = config.server_address.parse()
+        .expect("Неверный формат server_address");
+
+    let config = Arc::new(config);
+
+>>>>>>> 7ed26ab (Reliability tweaks)
     let status = Arc::new(RwLock::new(ServerStatus {
         is_online: false,
         is_restarting: false,
@@ -53,28 +68,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         players: vec![],
     }));
 
+<<<<<<< HEAD
+=======
+    // Запускаем HTTP-сервер (axum)
+    let bind_addr = format!("0.0.0.0:{}", config.api_port);
+>>>>>>> 7ed26ab (Reliability tweaks)
     let app = Router::new()
         .route("/status", get(get_status))
         .with_state(status.clone());
 
     tokio::spawn(async move {
-        println!("[{}] Запуск HTTP API на 0.0.0.0:9999...", now());
-        let listener = tokio::net::TcpListener::bind("0.0.0.0:9999").await.unwrap();
-        axum::serve(listener, app).await.unwrap();
+        println!("[{}] Запуск HTTP API на {}...", now(), bind_addr);
+        let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("[{}] Не удалось запустить HTTP-сервер на {}: {}", now(), bind_addr, e);
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = axum::serve(listener, app).await {
+            eprintln!("[{}] HTTP-сервер упал: {}", now(), e);
+            std::process::exit(1);
+        }
     });
 
+<<<<<<< HEAD
     let poller_status = status.clone();
     let slp_address = config.server_address.clone();
     
     // Фоновый поллер (SLP)
+=======
+    // Запускаем фоновый поллер (SLP)
+    let poller_status = status.clone();
+    let hostname = slp_addr.ip().to_string();
+    let port = slp_addr.port();
+
+>>>>>>> 7ed26ab (Reliability tweaks)
     tokio::spawn(async move {
-        let addr: SocketAddr = slp_address.parse().expect("Неверный формат server_address");
-        let hostname = addr.ip().to_string();
-        let port = addr.port();
-        
         loop {
             let ping_result = timeout(Duration::from_secs(3), async {
+<<<<<<< HEAD
                 let mut stream = tokio::net::TcpStream::connect(&addr).await?;
+=======
+                let mut stream = tokio::net::TcpStream::connect(&slp_addr).await?;
+>>>>>>> 7ed26ab (Reliability tweaks)
                 craftping::tokio::ping(&mut stream, &hostname, port).await
             }).await;
 
@@ -82,11 +119,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(Ok(pong)) => {
                     let mut st = poller_status.write().await;
                     st.is_online = true;
+<<<<<<< HEAD
                     // ВАЖНО: Мы больше не сбрасываем здесь st.is_restarting = false
+=======
+                    st.is_restarting = false;
+>>>>>>> 7ed26ab (Reliability tweaks)
                     st.player_count = pong.online_players;
-                    
+
                     if let Some(sample) = pong.sample {
-                        st.players = sample.into_iter().map(|p| p.name).collect::<Vec<String>>();
+                        st.players = sample.into_iter().map(|p| p.name).collect();
                     } else {
                         st.players.clear();
                     }
@@ -108,6 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut lines = MuxedLines::new()?;
     lines.add_file(&config.log_path).await?;
 
+<<<<<<< HEAD
     // Основной цикл: чтение логов и проверка утечек
     while let Ok(Some(line)) = lines.next_line().await {
         let text = line.line();
@@ -167,8 +209,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let mut st = status.write().await;
                             st.is_restarting = false;
                         }
+=======
+    // Кулдаун после рестарта: игнорируем срабатывания в течение 3 минут
+    let restart_cooldown = Duration::from_secs(180);
+    let mut last_restart = Instant::now() - restart_cooldown;
+
+    // Основной цикл: чтение логов и проверка утечек чанков
+    let shutdown = tokio::signal::ctrl_c();
+    tokio::pin!(shutdown);
+
+    loop {
+        tokio::select! {
+            result = lines.next_line() => {
+                let Some(line) = result? else { break };
+                let text = line.line();
+
+                if let Some(captures) = chunk_regex.captures(text) {
+                    if let Ok(chunks) = captures[1].parse::<u32>() {
+                        if chunks > config.chunk_limit && last_restart.elapsed() > restart_cooldown {
+                            println!("[{}] КРИТИЧЕСКАЯ УТЕЧКА! Чанков: {}. Лимит: {}.", now(), chunks, config.chunk_limit);
+
+                            {
+                                let mut st = status.write().await;
+                                st.is_restarting = true;
+                            }
+
+                            trigger_restart(&config).await;
+                            last_restart = Instant::now();
+
+                            println!("[{}] Ожидание перезапуска сервера...", now());
+                        }
+>>>>>>> 7ed26ab (Reliability tweaks)
                     }
                 }
+            }
+            _ = &mut shutdown => {
+                println!("[{}] Получен сигнал завершения, выход...", now());
+                break;
             }
         }
     }
@@ -176,7 +253,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn trigger_restart(config: Config) {
+async fn trigger_restart(config: &Config) {
     match Connection::builder()
         .enable_minecraft_quirks(true)
         .connect(config.rcon_address.as_str(), config.rcon_password.as_str())
@@ -186,7 +263,7 @@ async fn trigger_restart(config: Config) {
             println!("[{}] Отправка предупреждения в чат...", now());
             let _ = conn.cmd("/say Внимание! Критическая утечка памяти. Рестарт сервера через 1 минуту! Пожалуйста, спрячьтесь в безопасное место.").await;
             sleep(Duration::from_secs(60)).await;
-            
+
             let _ = conn.cmd("/say Выполняется перезагрузка...").await;
             sleep(Duration::from_secs(2)).await;
 

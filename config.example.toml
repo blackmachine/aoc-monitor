@@ -1,0 +1,15 @@
+# Путь к логам сервера
+log_path = "/path/to/minecraft/logs/latest.log"
+
+# Адрес сервера для SLP-пинга (ip:port)
+server_address = "127.0.0.1:25565"
+
+# Настройки RCON
+rcon_address = "127.0.0.1:25575"
+rcon_password = "your_rcon_password"
+
+# Лимит чанков для срабатывания рестарта
+chunk_limit = 30000
+
+# Порт HTTP API (необязательно, по умолчанию 9999)
+# api_port = 9999
