@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{Duration, Instant}; // Добавили Instant для замера времени
+use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, timeout, Instant};
 use rcon::Connection;
@@ -52,15 +52,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: Config = toml::from_str(&config_str)
         .expect("Ошибка парсинга config.toml");
 
-<<<<<<< HEAD
-=======
     // Парсим адрес SLP до запуска задачи, чтобы ошибка была видна сразу
     let slp_addr: SocketAddr = config.server_address.parse()
         .expect("Неверный формат server_address");
 
     let config = Arc::new(config);
 
->>>>>>> 7ed26ab (Reliability tweaks)
     let status = Arc::new(RwLock::new(ServerStatus {
         is_online: false,
         is_restarting: false,
@@ -68,11 +65,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         players: vec![],
     }));
 
-<<<<<<< HEAD
-=======
     // Запускаем HTTP-сервер (axum)
     let bind_addr = format!("0.0.0.0:{}", config.api_port);
->>>>>>> 7ed26ab (Reliability tweaks)
     let app = Router::new()
         .route("/status", get(get_status))
         .with_state(status.clone());
@@ -92,26 +86,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-<<<<<<< HEAD
-    let poller_status = status.clone();
-    let slp_address = config.server_address.clone();
-    
     // Фоновый поллер (SLP)
-=======
-    // Запускаем фоновый поллер (SLP)
     let poller_status = status.clone();
     let hostname = slp_addr.ip().to_string();
     let port = slp_addr.port();
 
->>>>>>> 7ed26ab (Reliability tweaks)
     tokio::spawn(async move {
         loop {
             let ping_result = timeout(Duration::from_secs(3), async {
-<<<<<<< HEAD
-                let mut stream = tokio::net::TcpStream::connect(&addr).await?;
-=======
                 let mut stream = tokio::net::TcpStream::connect(&slp_addr).await?;
->>>>>>> 7ed26ab (Reliability tweaks)
                 craftping::tokio::ping(&mut stream, &hostname, port).await
             }).await;
 
@@ -119,11 +102,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(Ok(pong)) => {
                     let mut st = poller_status.write().await;
                     st.is_online = true;
-<<<<<<< HEAD
-                    // ВАЖНО: Мы больше не сбрасываем здесь st.is_restarting = false
-=======
-                    st.is_restarting = false;
->>>>>>> 7ed26ab (Reliability tweaks)
                     st.player_count = pong.online_players;
 
                     if let Some(sample) = pong.sample {
@@ -149,71 +127,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut lines = MuxedLines::new()?;
     lines.add_file(&config.log_path).await?;
 
-<<<<<<< HEAD
-    // Основной цикл: чтение логов и проверка утечек
-    while let Ok(Some(line)) = lines.next_line().await {
-        let text = line.line();
-
-        if let Some(captures) = chunk_regex.captures(text) {
-            if let Some(chunk_str) = captures.get(1) {
-                if let Ok(chunks) = chunk_str.as_str().parse::<u32>() {
-                    if chunks > config.chunk_limit {
-                        
-                        // 1. Защита от спама в логах: проверяем, не начали ли мы уже рестарт
-                        let is_already_restarting = status.read().await.is_restarting;
-                        if is_already_restarting {
-                            continue; 
-                        }
-
-                        println!("[{}] КРИТИЧЕСКАЯ УТЕЧКА! Чаков: {}. Лимит: {}.", now(), chunks, config.chunk_limit);
-                        
-                        // Засекаем время начала всей процедуры
-                        let start_reboot_time = Instant::now();
-
-                        {
-                            let mut st = status.write().await;
-                            st.is_restarting = true;
-                        }
-
-                        // Вызываем RCON скрипт (он ждет 60 секунд внутри)
-                        trigger_restart(config.clone()).await;
-                        
-                        println!("[{}] Ожидание полного выключения сервера...", now());
-                        
-                        // Ждем, пока поллер не зафиксирует оффлайн (таймаут 2 минуты на случай зависания)
-                        let _ = timeout(Duration::from_secs(120), async {
-                            while status.read().await.is_online {
-                                sleep(Duration::from_secs(2)).await;
-                            }
-                        }).await;
-
-                        // Сервер упал, засекаем чистое время простоя
-                        let downtime_start = Instant::now();
-                        println!("[{}] Сервер выключен. Ожидание запуска...", now());
-
-                        // Ждем, пока сервер поднимется обратно (таймаут 10 минут)
-                        let _ = timeout(Duration::from_secs(600), async {
-                            while !status.read().await.is_online {
-                                sleep(Duration::from_secs(5)).await;
-                            }
-                        }).await;
-                        
-                        let downtime_duration = downtime_start.elapsed().as_secs();
-                        let total_reboot_duration = start_reboot_time.elapsed().as_secs();
-
-                        println!("[{}] Сервер снова online! Время простоя: {} сек. Общее время перезагрузки: {} сек.", 
-                            now(), downtime_duration, total_reboot_duration);
-
-                        // Всё прошло успешно, снимаем флаг
-                        {
-                            let mut st = status.write().await;
-                            st.is_restarting = false;
-                        }
-=======
-    // Кулдаун после рестарта: игнорируем срабатывания в течение 3 минут
-    let restart_cooldown = Duration::from_secs(180);
-    let mut last_restart = Instant::now() - restart_cooldown;
-
     // Основной цикл: чтение логов и проверка утечек чанков
     let shutdown = tokio::signal::ctrl_c();
     tokio::pin!(shutdown);
@@ -226,8 +139,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if let Some(captures) = chunk_regex.captures(text) {
                     if let Ok(chunks) = captures[1].parse::<u32>() {
-                        if chunks > config.chunk_limit && last_restart.elapsed() > restart_cooldown {
+                        if chunks > config.chunk_limit {
+                            // Защита от спама: проверяем, не идёт ли уже рестарт
+                            let is_already_restarting = status.read().await.is_restarting;
+                            if is_already_restarting {
+                                continue;
+                            }
+
                             println!("[{}] КРИТИЧЕСКАЯ УТЕЧКА! Чанков: {}. Лимит: {}.", now(), chunks, config.chunk_limit);
+
+                            let start_reboot_time = Instant::now();
 
                             {
                                 let mut st = status.write().await;
@@ -235,11 +156,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
 
                             trigger_restart(&config).await;
-                            last_restart = Instant::now();
 
-                            println!("[{}] Ожидание перезапуска сервера...", now());
+                            println!("[{}] Ожидание полного выключения сервера...", now());
+
+                            // Ждём, пока поллер не зафиксирует оффлайн (таймаут 2 минуты)
+                            let _ = timeout(Duration::from_secs(120), async {
+                                while status.read().await.is_online {
+                                    sleep(Duration::from_secs(2)).await;
+                                }
+                            }).await;
+
+                            let downtime_start = Instant::now();
+                            println!("[{}] Сервер выключен. Ожидание запуска...", now());
+
+                            // Ждём, пока сервер поднимется (таймаут 10 минут)
+                            let _ = timeout(Duration::from_secs(600), async {
+                                while !status.read().await.is_online {
+                                    sleep(Duration::from_secs(5)).await;
+                                }
+                            }).await;
+
+                            let downtime_duration = downtime_start.elapsed().as_secs();
+                            let total_reboot_duration = start_reboot_time.elapsed().as_secs();
+
+                            println!("[{}] Сервер снова online! Время простоя: {} сек. Общее время перезагрузки: {} сек.",
+                                now(), downtime_duration, total_reboot_duration);
+
+                            {
+                                let mut st = status.write().await;
+                                st.is_restarting = false;
+                            }
                         }
->>>>>>> 7ed26ab (Reliability tweaks)
                     }
                 }
             }
